@@ -1,5 +1,7 @@
 # inkdelta
 
+[![tests](https://github.com/jonmarrs/inkdelta/actions/workflows/tests.yml/badge.svg)](https://github.com/jonmarrs/inkdelta/actions/workflows/tests.yml)
+
 **Is a `total_fg_pixels` difference between villa spiral-fitting runs real?**
 
 villa's `spiral-fitting/autoresearch.md` loop keeps a change if its ink score beats the baseline. Three things
