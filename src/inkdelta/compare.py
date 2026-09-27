@@ -33,14 +33,19 @@ class Comparison:
     seed_rule_null_rate: float | None = None
 
 
-def _scorer_mismatch(runs: list[Run]) -> list[str]:
+def _scorer_mismatch(runs: list[Run]) -> tuple[list[str], list[str]]:
+    """(conflicts, unverifiable): a field whose recorded values disagree is a conflict; a field
+    recorded on only some runs (e.g. the snapshot, which predates villa #1805 on older scorers)
+    cannot be verified either way."""
     keys = set().union(*(r.scorer.keys() for r in runs))
-    bad = []
+    bad, partial = [], []
     for k in sorted(keys):
-        vals = {repr(r.scorer.get(k)) for r in runs}
-        if len(vals) > 1:
-            bad.append(f"{k}: {sorted(vals)}")
-    return bad
+        present = {repr(r.scorer[k]) for r in runs if k in r.scorer}
+        if len(present) > 1:
+            bad.append(f"{k}: {sorted(present)}")
+        elif any(k not in r.scorer for r in runs):
+            partial.append(k)
+    return bad, partial
 
 
 def compare(
@@ -64,10 +69,18 @@ def compare(
             findings=findings,
         )  # fmt: skip
 
-    mism = _scorer_mismatch(a + b)
+    mism, partial = _scorer_mismatch(a + b)
     if mism:
         return Comparison(
             "INCOMPARABLE", "runs were scored differently: " + "; ".join(mism), findings=findings
+        )
+    if partial:
+        findings.append(
+            Finding(
+                WARN,
+                "SCORER_PARTLY_UNVERIFIABLE",
+                f"recorded on only some runs, so sameness cannot be checked: {', '.join(partial)}",
+            )
         )
     if build_a is not None and build_b is not None and build_a != build_b:
         return Comparison(

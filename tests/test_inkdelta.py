@@ -92,6 +92,16 @@ def test_different_scorer_snapshots_are_incomparable(tmp_path):
     assert compare(a, b).verdict == "INCOMPARABLE"
 
 
+def test_a_snapshot_recorded_on_one_side_only_warns_rather_than_blocks(tmp_path):
+    a = _runs(tmp_path, "a", [3.0e6, 3.1e6])
+    b = _runs(tmp_path, "b", [3.2e6, 3.3e6])
+    for r in a:  # simulate a pre-#1805 scorer on side A
+        r.scorer.pop("snapshot")
+    res = compare(a, b, "x", "x")
+    assert res.verdict != "INCOMPARABLE"
+    assert "SCORER_PARTLY_UNVERIFIABLE" in {f.code for f in res.findings}
+
+
 def test_declared_different_sampler_builds_are_incomparable(tmp_path):
     a, b = _runs(tmp_path, "a", [3.0e6, 3.1e6]), _runs(tmp_path, "b", [3.2e6, 3.3e6])
     res = compare(a, b, build_a="edge-2026-05-13", build_b="source-75c79ac5f")
