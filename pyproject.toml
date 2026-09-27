@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inkdelta"
+version = "0.1.0"
+description = "Is a total_fg_pixels difference between villa spiral-fitting runs real? Integrity, comparability and noise checks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest", "scipy"]
+
+[project.scripts]
+inkdelta = "inkdelta.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
