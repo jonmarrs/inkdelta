@@ -1,6 +1,7 @@
 """inkdelta: is a total_fg_pixels difference between spiral-fitting runs real?
 
     inkdelta check RUN [--log LOG]
+    inkdelta noise --group RUN RUN [...] [--group RUN RUN ...]
     inkdelta compare --a RUN [RUN ...] --b RUN [RUN ...] [--log-a LOG ...] [--log-b LOG ...]
                      [--build-a NAME] [--build-b NAME] [--cv CV] [--json OUT]
 
@@ -18,6 +19,7 @@ from dataclasses import asdict
 
 from .compare import compare
 from .runs import FAIL, load_run
+from .stats import pooled_cv
 
 
 def _load(paths, logs):
@@ -42,7 +44,31 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--build-b", help="label of the vc_render_tifxyz build that sampled side B")
     m.add_argument("--cv", type=float, help="run-to-run CV of total_fg_pixels (needed for 1 run per side)")
     m.add_argument("--json", help="write the full result as JSON here")
+    n = sub.add_parser("noise", help="measure your run-to-run CV from seed replicates")
+    n.add_argument(
+        "--group", nargs="+", action="append", required=True, metavar="RUN",
+        help="replicates of ONE config (repeat --group per config; configs may differ in mean)",
+    )  # fmt: skip
     args = ap.parse_args(argv)
+
+    if args.cmd == "noise":
+        groups = [[load_run(p) for p in g] for g in args.group]
+        bad = [(r.path, f) for g in groups for r in g for f in r.findings if f.level == FAIL]
+        for path, f in bad:
+            print(f"  FAIL {f.code}: {path}: {f.detail}")
+        if bad:
+            print("INVALID: a replicate is not a fresh render; no noise estimate from it")
+            return 2
+        res = pooled_cv([[r.total_fg_pixels for r in g] for g in groups])
+        if res is None:
+            print("NO ESTIMATE: every group needs at least 2 runs")
+            return 3
+        print(f"run-to-run CV {res['cv']:.4f}, 95% interval [{res['lo']:.4f}, {res['hi']:.4f}], df {res['df']}")
+        print(
+            f"  use it as `inkdelta compare ... --cv {res['cv']:.4f}`; with df {res['df']} the true CV "
+            f"may be as high as {res['hi']:.4f}, so treat a borderline RESOLVED with care"
+        )
+        return 0
 
     if args.cmd == "check":
         r = load_run(args.run, args.log)

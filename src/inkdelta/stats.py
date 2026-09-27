@@ -100,6 +100,73 @@ def cv_relative(a: list[float], b: list[float], cv: float, alpha: float = 0.05) 
     return {"rel": rel, "lo": rel - half, "hi": rel + half, "cv": cv, "method": "cv"}
 
 
+def gammainc_lower(a: float, x: float) -> float:
+    """Regularized lower incomplete gamma P(a, x) (Numerical Recipes gser / gcf)."""
+    if x <= 0.0:
+        return 0.0
+    gln = math.lgamma(a)
+    if x < a + 1.0:  # series
+        ap, s, d = a, 1.0 / a, 1.0 / a
+        for _ in range(1000):
+            ap += 1.0
+            d *= x / ap
+            s += d
+            if abs(d) < abs(s) * 3e-16:
+                break
+        return s * math.exp(-x + a * math.log(x) - gln)
+    tiny = 1e-300  # continued fraction for Q, then P = 1 - Q
+    b = x + 1.0 - a
+    c, d = 1.0 / tiny, 1.0 / b
+    h = d
+    for i in range(1, 1000):
+        an = -i * (i - a)
+        b += 2.0
+        d = an * d + b
+        d = 1.0 / (d if abs(d) > tiny else tiny)
+        c = b + an / c
+        c = c if abs(c) > tiny else tiny
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 3e-16:
+            break
+    return 1.0 - math.exp(-x + a * math.log(x) - gln) * h
+
+
+def chi2_ppf(p: float, df: float) -> float:
+    """Quantile of the chi-square distribution, by bisection on P(df/2, x/2)."""
+    if not 0.0 < p < 1.0:
+        raise ValueError("p must be in (0, 1)")
+    lo, hi = 0.0, max(10.0, 10.0 * df)
+    while gammainc_lower(df / 2.0, hi / 2.0) < p:
+        hi *= 2.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if gammainc_lower(df / 2.0, mid / 2.0) < p:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def pooled_cv(groups: list[list[float]], alpha: float = 0.05) -> dict | None:
+    """Run-to-run CV pooled WITHIN groups (each group = replicates of one config; group means may
+    differ). CV = sqrt(sum of squared relative deviations from each group's mean / df), with a
+    chi-square (1 - alpha) interval. Groups of one run contribute nothing."""
+    devs, df = [], 0
+    for g in groups:
+        if len(g) < 2:
+            continue
+        m = st.mean(g)
+        devs += [(x - m) / m for x in g]
+        df += len(g) - 1
+    if df == 0:
+        return None
+    cv = math.sqrt(sum(d * d for d in devs) / df)
+    lo = cv * math.sqrt(df / chi2_ppf(1 - alpha / 2, df))
+    hi = cv * math.sqrt(df / chi2_ppf(alpha / 2, df))
+    return {"cv": cv, "lo": lo, "hi": hi, "df": df}
+
+
 def all_beat_null_rate(k: int) -> float:
     """P(all k B-runs beat all k A-runs | no effect, exchangeable runs) = 1 / C(2k, k)."""
     return 1.0 / comb(2 * k, k)

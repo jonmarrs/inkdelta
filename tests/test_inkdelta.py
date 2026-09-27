@@ -158,6 +158,36 @@ def test_welch_needs_two_runs_per_side_and_null_rates_are_exact():
     assert [all_beat_null_rate(k) for k in (1, 2, 3)] == [0.5, 1 / 6, 1 / 20]
 
 
+def test_pooled_cv_reproduces_a_registered_floor():
+    """vesuvius-autoresearch: pooled fit-only floor 0.0736 [0.0506, 0.1344], df 9 (12 runs, 3 configs)."""
+    from inkdelta.stats import pooled_cv
+
+    groups = [[3164499, 2963832, 3583420, 3018973, 2837373, 2848719],
+              [2877312, 3036013, 2923680], [2925004, 2697322, 2996520]]  # fmt: skip
+    r = pooled_cv(groups)
+    assert r["df"] == 9
+    assert (round(r["cv"], 4), round(r["lo"], 4), round(r["hi"], 4)) == (0.0736, 0.0506, 0.1344)
+
+
+def test_chi2_quantile_matches_scipy():
+    stats = pytest.importorskip("scipy.stats")
+    from inkdelta.stats import chi2_ppf
+
+    for df in (1, 2, 9, 18, 50):
+        for p in (0.025, 0.975):
+            assert chi2_ppf(p, df) == pytest.approx(stats.chi2.ppf(p, df), rel=1e-7)
+
+
+def test_noise_cli(tmp_path, capsys):
+    g1 = [str(make_run(tmp_path / "g1", f"a{i}", v)) for i, v in enumerate([3.0e6, 3.2e6, 3.1e6])]
+    g2 = [str(make_run(tmp_path / "g2", f"b{i}", v)) for i, v in enumerate([2.0e6, 2.1e6])]
+    assert main(["noise", "--group", *g1, "--group", *g2]) == 0
+    assert "run-to-run CV" in capsys.readouterr().out
+    stale = str(make_run(tmp_path / "s", "s", 3.0e6, log="all slices exist, skipping"))
+    assert main(["noise", "--group", g1[0], stale]) == 2
+    assert main(["noise", "--group", g1[0]]) == 3
+
+
 def test_cli_exit_codes(tmp_path, capsys):
     good = make_run(tmp_path / "g", "g1", 3.0e6)
     stale = make_run(tmp_path / "s", "s1", 3.0e6, log="all slices exist, skipping")

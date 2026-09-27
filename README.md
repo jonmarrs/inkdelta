@@ -24,9 +24,18 @@ inkdelta check out/2026-09-27_s1_jul9a
 # two arms, seeds as replicates, same sampler build declared on both sides
 inkdelta compare --a out/*_base_s? --b out/*_change_s? --build-a edge-0513 --build-b edge-0513
 
-# one run per side: supply your own run-to-run CV (0.074 is ours; measure yours)
-inkdelta compare --a out/*_base --b out/*_change --cv 0.074 --json result.json
+# measure YOUR run-to-run CV from seed replicates (one --group per config; means may differ)
+inkdelta noise --group out/*_base_s? --group out/*_other_s?
+#   -> run-to-run CV 0.0736, 95% interval [0.0506, 0.1344], df 9
+
+# one run per side: use that CV
+inkdelta compare --a out/*_base --b out/*_change --cv 0.0736 --json result.json
 ```
+
+`noise` pools each run's relative deviation from its own group's mean, so configs with different
+ink levels can be combined. It gives a chi-square interval. On our twelve runs it reproduces the
+registered floor exactly. With few replicates the interval is wide: at df 9 the true CV can be almost
+twice the estimate, which is why it is printed.
 
 A run is a villa run directory (`<out_dir>/<datedir>_<tag>`, whose log `<out_dir>/logs/<tag>.ink.log`
 is found automatically), any directory holding exactly one `ink_metric/metrics.json`, or a `metrics.json`
