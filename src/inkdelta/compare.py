@@ -7,8 +7,9 @@ Order of questions, each of which can stop the answer:
    `vc_render_tifxyz` build? A scorer mismatch -> INCOMPARABLE. For the sampler the user declares
    the build per side; different declarations -> INCOMPARABLE. None declared -> a warning with the
    measured size of the most common mismatch.
-3. **Size vs noise.** With >= 2 runs per side: a Welch interval. With 1 run per side: an interval
-   from a supplied run-to-run CV, or no verdict if none is given.
+3. **Size vs noise.** With >= 2 runs per side: a Welch interval, unless a supplied run-to-run CV
+   implies a wider one, which then decides (SPREAD_BELOW_FLOOR). With 1 run per side: the CV's
+   interval, or no verdict if none is given.
 """
 
 from __future__ import annotations
@@ -109,6 +110,25 @@ def compare(
         rule = all_beat_null_rate(k)
 
     iv = welch_relative(fa, fb, alpha)
+    if iv is not None and cv is not None:
+        # A small group can land tight by chance. When the replicates vary less than a measured
+        # floor says runs do, their Welch interval claims more precision than the process has,
+        # so the floor's interval decides. Measured case: three control seeds at CV 0.0124 against
+        # a floor of 0.0536 turned a +/-9% null into a +/-3% one (vesuvius-autoresearch
+        # reports/control_sensitivity.md).
+        floor = cv_relative(fa, fb, cv, alpha)
+        if floor["hi"] - floor["lo"] > iv["hi"] - iv["lo"]:
+            findings.append(
+                Finding(
+                    WARN,
+                    "SPREAD_BELOW_FLOOR",
+                    f"the replicates vary less than --cv {cv} says runs do: Welch gives "
+                    f"[{iv['lo']:+.2%}, {iv['hi']:+.2%}], the floor [{floor['lo']:+.2%}, "
+                    f"{floor['hi']:+.2%}]. Deciding on the wider one: a tight small group is "
+                    "weak evidence of a quieter process",
+                )
+            )
+            iv = {**floor, "welch": iv}
     if iv is None and cv is not None:
         iv = cv_relative(fa, fb, cv, alpha)
     if iv is None:

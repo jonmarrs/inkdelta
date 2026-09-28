@@ -32,7 +32,19 @@ inkdelta noise --group out/*_base_s? --group out/*_other_s?
 
 # one run per side: use that CV
 inkdelta compare --a out/*_base --b out/*_change --cv 0.0736 --json result.json
+
+# replicates AND a measured CV: the CV acts as a floor (0.3.0)
+inkdelta compare --a out/*_base_s? --b out/*_change_s? --cv 0.0536
 ```
+
+**Pass `--cv` even when you have replicates.** Three seeds can land close together by chance, and
+Welch then reports more precision than the process has. With `--cv`, inkdelta also computes the
+interval that CV implies. If that interval is wider than Welch's, it decides on the wider one and
+warns `SPREAD_BELOW_FLOOR`, showing both. The measured case: an ablation compared against three
+control seeds at CV 0.0124, when the measured floor was 0.0536. Welch gave +0.28% [−2.56%, +3.13%],
+and the floor gives [−8.29%, +8.86%]. The other six seeds of the same configuration put the effect at
+−4.41% [−12.18%, +3.37%], so the tight interval was the seeds, not the ablation
+([report](https://github.com/jonmarrs/vesuvius-autoresearch/blob/main/reports/control_sensitivity.md)).
 
 `noise` pools each run's relative deviation from its own group's mean, so configs with different
 ink levels can be combined. It gives a chi-square interval. On our twelve runs it reproduces the

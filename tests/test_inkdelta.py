@@ -153,6 +153,43 @@ def test_t_quantile_matches_scipy():
         assert t_ppf(0.975, df) == pytest.approx(stats.t.ppf(0.975, df), abs=1e-8)
 
 
+SAMEWINDING_BASE = [2904520, 2901177, 2841071]  # vesuvius-autoresearch curbase_s1..s3
+SAMEWINDING_ABL = [2893440, 2925553, 2852335]  # nosamecur_s1..s3
+
+
+def test_welch_alone_reproduces_the_registered_tight_interval(tmp_path):
+    """Registered: +0.28% [-2.56%, +3.13%]. Without --cv, Welch decides, as before."""
+    res = compare(_runs(tmp_path, "a", SAMEWINDING_BASE), _runs(tmp_path, "b", SAMEWINDING_ABL), "x", "x")
+    iv = res.interval
+    assert iv["method"] == "welch"
+    assert (round(iv["lo"], 4), round(iv["hi"], 4)) == (-0.0256, 0.0313)
+    assert "SPREAD_BELOW_FLOOR" not in {f.code for f in res.findings}
+
+
+def test_a_measured_floor_overrides_replicates_that_landed_tight(tmp_path):
+    """The case that motivated 0.3.0: three control seeds at CV 0.0124 against a measured floor of
+    0.0536 (vesuvius-autoresearch reports/control_sensitivity.md). The replicates' Welch interval is
+    narrower than the floor allows, so the verdict must use the floor's and say why."""
+    res = compare(_runs(tmp_path, "a", SAMEWINDING_BASE), _runs(tmp_path, "b", SAMEWINDING_ABL),
+                  "x", "x", cv=0.0536)  # fmt: skip
+    iv = res.interval
+    assert res.verdict == "NOT RESOLVED"
+    assert iv["method"] == "cv"
+    assert (round(iv["lo"], 4), round(iv["hi"], 4)) == (-0.0829, 0.0886)
+    assert (round(iv["welch"]["lo"], 4), round(iv["welch"]["hi"], 4)) == (-0.0256, 0.0313)
+    assert "SPREAD_BELOW_FLOOR" in {f.code for f in res.findings}
+
+
+def test_a_floor_does_not_override_replicates_that_are_noisier(tmp_path):
+    """Finding 62's replicates are wider than a 0.0536 floor implies, so Welch stays in charge."""
+    base = [3164499, 2963832, 3583420, 3018973, 2837373, 2848719]
+    up = [3279498, 3360916, 3012138]
+    res = compare(_runs(tmp_path, "a", base), _runs(tmp_path, "b", up), "x", "x", cv=0.0536)
+    assert res.interval["method"] == "welch"
+    assert round(res.interval["lo"], 4) == -0.0751
+    assert "SPREAD_BELOW_FLOOR" not in {f.code for f in res.findings}
+
+
 def test_welch_needs_two_runs_per_side_and_null_rates_are_exact():
     assert welch_relative([1.0], [2.0, 3.0]) is None
     assert [all_beat_null_rate(k) for k in (1, 2, 3)] == [0.5, 1 / 6, 1 / 20]

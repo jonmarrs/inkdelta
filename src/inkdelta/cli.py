@@ -42,7 +42,11 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--log-b", nargs="+")
     m.add_argument("--build-a", help="label of the vc_render_tifxyz build that sampled side A")
     m.add_argument("--build-b", help="label of the vc_render_tifxyz build that sampled side B")
-    m.add_argument("--cv", type=float, help="run-to-run CV of total_fg_pixels (needed for 1 run per side)")
+    m.add_argument(
+        "--cv", type=float,
+        help="measured run-to-run CV of total_fg_pixels: required for 1 run per side, and a floor "
+        "on the Welch interval when replicates land tighter than it",
+    )
     m.add_argument("--json", help="write the full result as JSON here")
     n = sub.add_parser("noise", help="measure your run-to-run CV from seed replicates")
     n.add_argument(
