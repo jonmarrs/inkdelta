@@ -5,8 +5,10 @@
     inkdelta compare --a RUN [RUN ...] --b RUN [RUN ...] [--log-a LOG ...] [--log-b LOG ...]
                      [--build-a NAME] [--build-b NAME] [--cv CV] [--json OUT]
 
-A RUN is a villa run directory (<out_dir>/<datedir>_<tag>, with <out_dir>/logs/<tag>.ink.log), any
-directory holding exactly one ink_metric/metrics.json, or a metrics.json itself.
+A RUN is a villa run directory (<out_dir>/<datedir>_<tag>, with <out_dir>/logs/<tag>.ink.log), a
+runners/run_single.py output directory (with --seeds it counts as one run per seed-<s>), any
+directory holding exactly one ink_metric/metrics.json, or a metrics.json itself. A --log applies to
+every run its RUN expands to.
 Exit codes: 0 resolved / not resolved, 2 invalid or incomparable, 3 no noise estimate.
 """
 
@@ -18,7 +20,7 @@ import sys
 from dataclasses import asdict
 
 from .compare import compare
-from .runs import FAIL, load_run
+from .runs import FAIL, expand_runs
 from .stats import pooled_cv
 
 
@@ -26,7 +28,7 @@ def _load(paths, logs):
     logs = logs or []
     if logs and len(logs) != len(paths):
         raise SystemExit("--log-a/--log-b must be given once per run, in the same order")
-    return [load_run(p, logs[i] if logs else None) for i, p in enumerate(paths)]
+    return [r for i, p in enumerate(paths) for r in expand_runs(p, logs[i] if logs else None)]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,8 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("compare", help="is B different from A?")
     m.add_argument("--a", nargs="+", required=True)
     m.add_argument("--b", nargs="+", required=True)
-    m.add_argument("--log-a", nargs="+")
-    m.add_argument("--log-b", nargs="+")
+    m.add_argument("--log-a", nargs="+", help="one render log per --a RUN, in order")
+    m.add_argument("--log-b", nargs="+", help="one render log per --b RUN, in order")
     m.add_argument("--build-a", help="label of the vc_render_tifxyz build that sampled side A")
     m.add_argument("--build-b", help="label of the vc_render_tifxyz build that sampled side B")
     m.add_argument(
@@ -56,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.cmd == "noise":
-        groups = [[load_run(p) for p in g] for g in args.group]
+        groups = [_load(g, None) for g in args.group]
         bad = [(r.path, f) for g in groups for r in g for f in r.findings if f.level == FAIL]
         for path, f in bad:
             print(f"  FAIL {f.code}: {path}: {f.detail}")
@@ -75,12 +77,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "check":
-        r = load_run(args.run, args.log)
-        print(f"{r.path}: total_fg_pixels={r.total_fg_pixels}")
-        for f in r.findings:
-            print(f"  {f.level} {f.code}: {f.detail}")
-        print("OK" if r.ok else "FAIL")
-        return 0 if r.ok else 2
+        runs = expand_runs(args.run, args.log)
+        for r in runs:
+            print(f"{r.path}: total_fg_pixels={r.total_fg_pixels}")
+            for f in r.findings:
+                print(f"  {f.level} {f.code}: {f.detail}")
+        ok = all(r.ok for r in runs)
+        print("OK" if ok else "FAIL")
+        return 0 if ok else 2
 
     a, b = _load(args.a, args.log_a), _load(args.b, args.log_b)
     res = compare(a, b, args.build_a, args.build_b, args.cv)

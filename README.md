@@ -20,6 +20,11 @@ the standard library.
 ```bash
 pip install .            # or: PYTHONPATH=src python -m inkdelta.cli ...
 
+# villa's runners/run_single.py --seeds output: each seed-<s> counts as one run (0.4.0)
+python runners/run_single.py ... --output out/base   --seeds 1,2,3 > base.log 2>&1
+python runners/run_single.py ... --output out/change --seeds 4,5,6 > change.log 2>&1
+inkdelta compare --a out/base --b out/change --log-a base.log --log-b change.log --cv 0.0736
+
 # one run: is its score a fresh, non-empty render?
 inkdelta check out/2026-09-27_s1_jul9a
 
@@ -51,9 +56,24 @@ ink levels can be combined. It gives a chi-square interval. On our twelve runs i
 registered floor exactly. With few replicates the interval is wide: at df 9 the true CV can be almost
 twice the estimate, which is why it is printed.
 
-A run is a villa run directory (`<out_dir>/<datedir>_<tag>`, whose log `<out_dir>/logs/<tag>.ink.log`
-is found automatically), any directory holding exactly one `ink_metric/metrics.json`, or a `metrics.json`
-itself. Pass `--log-a/--log-b` for other layouts.
+**What counts as a run.** villa has two layouts, and inkdelta reads both:
+
+* **`runners/run_single.py` (the runner villa ships, added in villa #1553).** An `--output` directory
+  counts as one run per `seed-<s>/` inside it. Without `--seeds` it is a single run. The runner keeps no
+  log file. Redirect its output and pass that file with `--log` or `--log-a/--log-b`, or the stale-render
+  check cannot run and you get `LOG_NOT_FOUND`. Under `runners/run_sweep.py`, the combined log
+  `<sweep>/.sweep/logs/<name>.log` is found automatically. One log covers every seed, so a skipped
+  render in it fails all of them. inkdelta also checks `aggregate_metrics.json` against the seed
+  runs it finds and warns `AGGREGATE_MISMATCH` if the seeds or the mean disagree. The seed runs'
+  own scores are what it uses.
+* **The layout `spiral-fitting/autoresearch.md` documents:** `<out_dir>/<datedir>_<tag>`, whose log
+  `<out_dir>/logs/<tag>.ink.log` is found automatically.
+
+Any directory holding exactly one `ink_metric/metrics.json`, or a `metrics.json` itself, also works.
+
+**Do not use `aggregate_metrics.json`'s `stddev` as your noise.** `run_single.py` computes it as a
+population SD (`statistics.pstdev`). With two seeds that is 29% below the sample SD; with three, 18%
+below. Use `inkdelta noise` on the seed runs instead.
 
 **Verdicts:**
 

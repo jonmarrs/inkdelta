@@ -1,3 +1,3 @@
 """inkdelta: is a total_fg_pixels difference between spiral-fitting runs real?"""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

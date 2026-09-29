@@ -1,4 +1,15 @@
-"""inkdelta on synthetic runs laid out exactly as villa's run_single.py writes them."""
+"""inkdelta on synthetic runs in villa's two layouts.
+
+`make_run` is the layout villa's spiral-fitting/autoresearch.md documents (per-tag logs under
+<out_dir>/logs). `make_villa_output` is what villa's runners/run_single.py writes, taken from running
+that file (villa 6e53201ac) with its fit/render/score subprocesses stubbed:
+
+    <output>/seed-<s>/<date>_<scroll>_slice-<z0>-<z1>_<n>-patch/meshes/fitted/ink_metric/metrics.json
+    <output>/seed-<s>/training_metrics.jsonl
+    <output>/aggregate_metrics.json   {"seeds": [...], "final": {"total_fg_pixels": {mean, stddev, count}}}
+
+and runners/run_sweep.py puts one combined log per run_single output at <sweep>/.sweep/logs/<name>.log.
+"""
 
 import json
 from pathlib import Path
@@ -7,7 +18,7 @@ import pytest
 
 from inkdelta.cli import main
 from inkdelta.compare import compare
-from inkdelta.runs import load_run
+from inkdelta.runs import expand_runs, load_run
 from inkdelta.stats import all_beat_null_rate, t_ppf, welch_relative
 
 SCORER = {"model": "scrollprize/ink-coverage-32um", "checkpoint": "checkpoint_final.pth",
@@ -25,6 +36,24 @@ def make_run(out: Path, tag: str, fg: float, log: str = "Done. Strips written\n"
     if log is not None:
         (out / "logs" / f"{tag}.ink.log").write_text(log)
     return run
+
+
+def make_villa_output(output: Path, fgs: dict, aggregate: bool = True) -> Path:
+    """runners/run_single.py --seeds <keys of fgs>: one seed-<s> run each, plus the aggregate."""
+    for seed, fg in fgs.items():
+        m = output / f"seed-{seed}" / "2026-09-29_PHercParis4_slice-0-100_10-patch" / "meshes" / "fitted"
+        (m / "ink_metric").mkdir(parents=True)
+        (m / "ink_metric" / "metrics.json").write_text(
+            json.dumps({"summary": {**SCORER, "total_fg_pixels": fg}}))
+        (output / f"seed-{seed}" / "training_metrics.jsonl").write_text("")
+    if aggregate and len(fgs) >= 2:
+        v = list(fgs.values())
+        mean = sum(v) / len(v)
+        sd = (sum((x - mean) ** 2 for x in v) / len(v)) ** 0.5  # run_single uses pstdev
+        (output / "aggregate_metrics.json").write_text(json.dumps({
+            "run_id": "x", "seeds": list(fgs), "training": [],
+            "final": {"total_fg_pixels": {"mean": mean, "stddev": sd, "count": len(v)}}}))
+    return output
 
 
 # ---------------------------------------------------------------- single-run integrity
@@ -234,3 +263,74 @@ def test_cli_exit_codes(tmp_path, capsys):
     out = tmp_path / "r.json"
     assert main(["compare", "--a", str(good), "--b", str(good), "--cv", "0.074", "--json", str(out)]) == 0
     assert json.loads(out.read_text())["verdict"] == "NOT RESOLVED"
+
+
+# ---------------------------------------------------------------- runners/run_single.py layout
+
+
+def test_a_seeds_output_expands_to_one_run_per_seed_in_numeric_order(tmp_path):
+    out = make_villa_output(tmp_path / "base", {10: 3.1e6, 2: 3.0e6, 1: 3.2e6})
+    runs = expand_runs(out)
+    assert [r.path.name for r in runs] == ["seed-1", "seed-2", "seed-10"]
+    assert [r.total_fg_pixels for r in runs] == [3.2e6, 3.0e6, 3.1e6]
+    assert all(r.ok for r in runs)
+    assert not {f.code for r in runs for f in r.findings} & {"AGGREGATE_MISMATCH", "AGGREGATE_UNREADABLE"}
+
+
+def test_an_output_without_seeds_is_one_run(tmp_path):
+    out = make_villa_output(tmp_path / "single", {0: 3.0e6}, aggregate=False)
+    (only,) = expand_runs(out / "seed-0")  # a seed dir is itself a run
+    assert only.total_fg_pixels == 3.0e6
+    assert "LOG_NOT_FOUND" in {f.code for f in only.findings}
+    assert "keeps no log file" in next(f.detail for f in only.findings if f.code == "LOG_NOT_FOUND")
+
+
+def test_comparing_two_seeds_outputs_equals_listing_their_seed_dirs(tmp_path):
+    a = make_villa_output(tmp_path / "base", {1: 3.30e6, 2: 3.10e6, 3: 3.45e6})
+    b = make_villa_output(tmp_path / "change", {11: 3.50e6, 12: 3.65e6, 13: 3.60e6})
+    whole = compare(expand_runs(a), expand_runs(b), "x", "x")
+    listed = compare([load_run(d) for d in sorted(a.glob("seed-*"))],
+                     [load_run(d) for d in sorted(b.glob("seed-*"))], "x", "x")  # fmt: skip
+    assert whole.interval == listed.interval
+    assert whole.verdict == "NOT RESOLVED" and round(whole.interval["rel"], 4) == 0.0914
+
+
+def test_a_sweep_log_is_found_and_its_blame_is_shared(tmp_path):
+    out = make_villa_output(tmp_path / "sweep" / "cfgA", {1: 3.0e6, 2: 3.1e6})
+    logs = tmp_path / "sweep" / ".sweep" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "cfgA.log").write_text("[cfgA] [tif] all slices exist, skipping.\n")
+    runs = expand_runs(out)
+    assert all(r.log_path == logs / "cfgA.log" for r in runs)
+    assert all(not r.ok for r in runs)
+    stale = [f for r in runs for f in r.findings if f.code == "STALE_SLICES"]
+    assert len(stale) == 2 and all("shared by all 2 seed runs of cfgA" in f.detail for f in stale)
+
+
+def test_an_aggregate_that_does_not_match_the_seed_runs_warns(tmp_path):
+    extra = make_villa_output(tmp_path / "extra", {1: 3.0e6, 2: 3.1e6})
+    make_villa_output(tmp_path / "other", {3: 3.2e6}, aggregate=False)
+    (tmp_path / "other" / "seed-3").rename(extra / "seed-3")
+    assert "AGGREGATE_MISMATCH" in {f.code for r in expand_runs(extra) for f in r.findings}
+
+    rescored = make_villa_output(tmp_path / "rescored", {1: 3.0e6, 2: 3.1e6})
+    mp = next((rescored / "seed-2").rglob("metrics.json"))
+    d = json.loads(mp.read_text())
+    d["summary"]["total_fg_pixels"] = 3.3e6
+    mp.write_text(json.dumps(d))
+    w = [f for r in expand_runs(rescored) for f in r.findings if f.code == "AGGREGATE_MISMATCH"]
+    assert w and "re-scored after aggregation" in w[0].detail
+    assert all(r.ok for r in expand_runs(rescored))  # a warning: the seed runs themselves are fine
+
+
+def test_the_cli_takes_seeds_outputs_everywhere(tmp_path, capsys):
+    a = make_villa_output(tmp_path / "base", {1: 3.0e6, 2: 3.2e6, 3: 3.1e6})
+    b = make_villa_output(tmp_path / "change", {4: 2.0e6, 5: 2.1e6})
+    assert main(["check", str(a)]) == 0
+    assert main(["noise", "--group", str(a), "--group", str(b)]) == 0
+    assert "df 3" in capsys.readouterr().out
+    assert main(["compare", "--a", str(a), "--b", str(b), "--build-a", "x", "--build-b", "x"]) == 0
+    assert "RESOLVED (-)" in capsys.readouterr().out
+    log = tmp_path / "base.out"
+    log.write_text("all slices exist, skipping")
+    assert main(["compare", "--a", str(a), "--b", str(b), "--log-a", str(log)]) == 2
