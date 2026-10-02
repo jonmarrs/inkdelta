@@ -23,6 +23,9 @@ from .stats import all_beat_null_rate, cv_relative, welch_relative
 # volume-cartographer image (pre villa #1146) vs a post-#1146 build, 4 surfaces.
 # https://github.com/jonmarrs/vesuvius-autoresearch  reports/step2_across_surfaces.md
 ROUTE_EFFECT = "+5.0% to +9.2% (mean +6.5%) on 4 PHercParis4 surfaces"
+# Same flat surface, linear vs smooth (villa #1818), frozen scorer, 8 full-height 2048-px windows:
+# vesuvius-autoresearch reports/surface_interpolation_relocates_ink.md
+INTERP_EFFECT = "-20% to +18% per 2048-px window (-1.3% pooled over 8) on a PHercParis4 surface"
 
 
 @dataclass
@@ -81,6 +84,26 @@ def compare(
                 WARN,
                 "SCORER_PARTLY_UNVERIFIABLE",
                 f"recorded on only some runs, so sameness cannot be checked: {', '.join(partial)}",
+            )
+        )
+    modes = {r.surface_interp for r in a + b if r.surface_interp is not None}
+    if len(modes) > 1:
+        def who(m):
+            return ", ".join(str(r.path) for r in a + b if r.surface_interp == m)
+        return Comparison(
+            "INCOMPARABLE",
+            "runs were rendered with different --surface-interpolation modes (smooth: "
+            f"{who('smooth')}; linear: {who('linear')}). On the same surface the mode alone moves "
+            f"total_fg_pixels {INTERP_EFFECT}",
+            findings=findings,
+        )
+    if "smooth" in modes and any(r.surface_interp is None for r in a + b):
+        findings.append(
+            Finding(
+                WARN,
+                "SURFACE_INTERP_UNVERIFIED",
+                "some runs were rendered with --surface-interpolation smooth and others have no "
+                f"render log to say; mixing modes alone moves total_fg_pixels {INTERP_EFFECT}",
             )
         )
     if build_a is not None and build_b is not None and build_a != build_b:

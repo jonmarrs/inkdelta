@@ -32,6 +32,9 @@ from pathlib import Path
 # Signatures in vc_render_tifxyz / render_ink.py output that mean the score is not a fresh render.
 STALE_SLICES = "all slices exist, skipping"  # sampler re-used old per-slice TIFFs and exited 0
 ZERO_STRIP = ("p95=0.0", "rendered strip is entirely zero")  # all-black strip (villa #1660 / #1886)
+# vc_render_tifxyz prints this only with --surface-interpolation smooth (villa #1818, 2026-09-30);
+# its absence in a render log means the default, linear (and every pre-#1818 build is linear).
+SMOOTH_INTERP = "Surface interpolation: smooth"
 
 FAIL, WARN = "FAIL", "WARN"
 
@@ -67,6 +70,7 @@ class Run:
     log_path: Path | None = None
     total_fg_pixels: float | None = None
     scorer: dict = field(default_factory=dict)
+    surface_interp: str | None = None  # 'smooth' / 'linear' from the render log; None: no log
     findings: list[Finding] = field(default_factory=list)
 
     @property
@@ -147,6 +151,7 @@ def load_run(path: str | Path, log: str | Path | None = None) -> Run:
     else:
         run.log_path = lp
         text = lp.read_text(errors="replace")
+        run.surface_interp = "smooth" if SMOOTH_INTERP in text else "linear"
         if STALE_SLICES in text:
             run.findings.append(
                 Finding(

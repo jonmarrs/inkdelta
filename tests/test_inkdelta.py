@@ -334,3 +334,37 @@ def test_the_cli_takes_seeds_outputs_everywhere(tmp_path, capsys):
     log = tmp_path / "base.out"
     log.write_text("all slices exist, skipping")
     assert main(["compare", "--a", str(a), "--b", str(b), "--log-a", str(log)]) == 2
+
+
+# ---------------------------------------------------------------- render mode (villa #1818)
+
+SMOOTH_LOG = "Surface interpolation: smooth (bicubic)\nrendering 2048x1024 at scale 0.25\n"
+
+
+def test_the_render_mode_is_read_from_the_log(tmp_path):
+    assert load_run(make_run(tmp_path, "s1", 3.0e6, log=SMOOTH_LOG)).surface_interp == "smooth"
+    assert load_run(make_run(tmp_path, "l1", 3.0e6)).surface_interp == "linear"
+    assert load_run(make_run(tmp_path, "n1", 3.0e6, log=None)).surface_interp is None
+
+
+def test_mixed_render_modes_are_incomparable(tmp_path):
+    a = _runs(tmp_path, "a", [3.0e6, 3.1e6])
+    b = _runs(tmp_path, "b", [3.2e6, 3.3e6], log=SMOOTH_LOG)
+    res = compare(a, b, "x", "x")
+    assert res.verdict == "INCOMPARABLE" and "surface-interpolation" in res.detail
+
+
+def test_same_render_mode_on_both_sides_is_fine(tmp_path):
+    a = _runs(tmp_path, "a", [3.0e6, 3.1e6], log=SMOOTH_LOG)
+    b = _runs(tmp_path, "b", [3.2e6, 3.3e6], log=SMOOTH_LOG)
+    res = compare(a, b, "x", "x")
+    assert res.verdict != "INCOMPARABLE"
+    assert "SURFACE_INTERP_UNVERIFIED" not in {f.code for f in res.findings}
+
+
+def test_smooth_against_unlogged_runs_warns(tmp_path):
+    a = _runs(tmp_path, "a", [3.0e6, 3.1e6], log=None)
+    b = _runs(tmp_path, "b", [3.2e6, 3.3e6], log=SMOOTH_LOG)
+    res = compare(a, b, "x", "x")
+    assert res.verdict != "INCOMPARABLE"
+    assert "SURFACE_INTERP_UNVERIFIED" in {f.code for f in res.findings}
