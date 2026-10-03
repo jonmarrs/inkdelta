@@ -23,9 +23,13 @@ from .stats import all_beat_null_rate, cv_relative, welch_relative
 # volume-cartographer image (pre villa #1146) vs a post-#1146 build, 4 surfaces.
 # https://github.com/jonmarrs/vesuvius-autoresearch  reports/step2_across_surfaces.md
 ROUTE_EFFECT = "+5.0% to +9.2% (mean +6.5%) on 4 PHercParis4 surfaces"
-# Same flat surface, linear vs smooth (villa #1818), frozen scorer, 8 full-height 2048-px windows:
-# vesuvius-autoresearch reports/surface_interpolation_relocates_ink.md
-INTERP_EFFECT = "-20% to +18% per 2048-px window (-1.3% pooled over 8) on a PHercParis4 surface"
+# linear vs smooth (villa #1818), measured in villa's own pipeline on 8 labelled PHercParis4 segments
+# (vesuvius-autoresearch reports/scorer_vs_labels_surface_interpolation.md); larger per-crop swings under
+# per-crop normalisation in reports/surface_interpolation_relocates_ink.md
+INTERP_EFFECT = (
+    "-3.6% to +4.2% per segment (median 0.9%; up to +/-9% per 2048-px window) on 8 PHercParis4 "
+    "segments, with no change in agreement with villa's ink labels"
+)
 
 
 @dataclass
