@@ -23,12 +23,13 @@ from .stats import all_beat_null_rate, cv_relative, welch_relative
 # volume-cartographer image (pre villa #1146) vs a post-#1146 build, 4 surfaces.
 # https://github.com/jonmarrs/vesuvius-autoresearch  reports/step2_across_surfaces.md
 ROUTE_EFFECT = "+5.0% to +9.2% (mean +6.5%) on 4 PHercParis4 surfaces"
-# linear vs smooth (villa #1818), measured in villa's own pipeline on 8 labelled PHercParis4 segments
-# (vesuvius-autoresearch reports/scorer_vs_labels_surface_interpolation.md); larger per-crop swings under
-# per-crop normalisation in reports/surface_interpolation_relocates_ink.md
+# linear vs smooth (villa #1818), villa's own scoring pipeline, 8 labelled PHercParis4 segments
+# (vesuvius-autoresearch reports/scorer_vs_labels_surface_interpolation.md, reports/coarse_grid_interpolation.md).
+# The effect scales with mesh grid cell size; spiral-fit surfaces have ~80-voxel cells.
 INTERP_EFFECT = (
-    "-3.6% to +4.1% per segment (median 0.9%; up to +/-9% per 2048-px window) on 8 PHercParis4 "
-    "segments, with no change in agreement with villa's ink labels"
+    "-3.6% to +4.1% per segment on 20-voxel segment meshes, but -7.9% to +19.4% per segment "
+    "(-32% to +42% per 2048-px window) on 80-voxel grids like spiral-fit surfaces, against at most "
+    "a 1-2% change in agreement with villa's ink labels"
 )
 
 
