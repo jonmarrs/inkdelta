@@ -27,7 +27,7 @@ ROUTE_EFFECT = "+5.0% to +9.2% (mean +6.5%) on 4 PHercParis4 surfaces"
 # (vesuvius-autoresearch reports/scorer_vs_labels_surface_interpolation.md); larger per-crop swings under
 # per-crop normalisation in reports/surface_interpolation_relocates_ink.md
 INTERP_EFFECT = (
-    "-3.6% to +4.2% per segment (median 0.9%; up to +/-9% per 2048-px window) on 8 PHercParis4 "
+    "-3.6% to +4.1% per segment (median 0.9%; up to +/-9% per 2048-px window) on 8 PHercParis4 "
     "segments, with no change in agreement with villa's ink labels"
 )
 
